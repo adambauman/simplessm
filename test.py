@@ -1,7 +1,7 @@
 import time
 import struct
 
-from simplessm import SelectMonitor
+from simplessm import SelectMonitor, SSMFields
 
 class Configuration:
     port_name = "/dev/ttyUSB0"
@@ -11,8 +11,11 @@ def main():
     config = Configuration()
     ssm = SelectMonitor(config.port_name)
 
-    address_bytes = struct.pack("!BBB", 0x00, 0x00, 0x1C) # battery voltage
-    command = ssm.build_read_address_command(address_bytes)
+    target_fields = []
+    target_fields.append(SSMFields.battery_voltage)
+    #target_fields.append(SSMFields.ooolant_temperature)
+    
+    command = ssm.build_address_read_packet(target_fields)
     ssm.test_command(command)
     
 # 0x80:dest:src:datasize:command:datamultibytes:checksum

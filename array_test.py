@@ -23,17 +23,17 @@ class SSMUnits:
     psig = SSMUnit("PSI Gauge", "PSIG")
 
 class SSMField:
-    upper_address = bytearray([0x00, 0x00, 0x00])
-    lower_address = bytearray([0x00, 0x00, 0x00])
-    upper_value = 0x00
-    lower_value = 0x00
+    upper_address = None
+    lower_address = None
+    upper_value = None
+    lower_value = None
     name = ""
     unit = SSMUnits.unknown
 
     def __init__(
         self, 
-        upper_address=bytearray([0x00,0x00,0x00]), lower_address=bytearray([0x00,0x00,0x00]),
-        upper_byte=0x00, lower_byte=0x00,
+        upper_address=None, lower_address=None,
+        upper_byte=None, lower_byte=None,
         name="", unit=SSMUnits.unknown
     ):
         self.upper_address = upper_address
@@ -46,7 +46,7 @@ class SSMField:
     # TODO: def get_imperial_value() and get_metric_value()
 
 class SSMFields:
-    #coolant_temperature = SSMField(lower_address=bytearray(0x00,0x00,0x08), name="Coolant Temperature", unit=SSMUnits.celsius)
+    ooolant_temperature = SSMField(lower_address=bytearray([0x00,0x00,0x08]), name="Coolant Temperature", unit=SSMUnits.celsius)
     battery_voltage = SSMField(lower_address=bytearray([0x00,0x00,0x1c]), name="Battery Voltage", unit=SSMUnits.volts)
     #engine_load = SSMField(lower_address=bytearray(0x00,0x07,0x00), name="Engine Load", unit=SSMUnits.percent)
     #manifold_absolute_pressure = SSMField(lower_address=bytearray(0x00,0x0D,0x00), name="Manifold Absolute Pressure", unit=SSMUnits.psig)
@@ -76,20 +76,19 @@ def __calculate_checksum__(data_bytes):
     return checksum
 
 
-
-
-
-def main():
-    # 0x80:dest:src:datasize:command:datamultibytes:checksum
-
-    target_address = SSMFields.battery_voltage.lower_address
-    
-    # Use extend() for adding multiple bytes, append() for single bytes?
+def build_command_packet(target_fields):
+    # Use extend() for adding other byte arrays, append() for single bytes
     # Put together the command data which is a single command byte and its associated data
     data = bytearray()
-    data.append(SSMPacketComponents.data_padding)
     data.append(SSMPacketComponents.read_address_command)
-    data.extend(target_address)
+    data.append(SSMPacketComponents.data_padding)
+
+    for field in target_fields:
+        # 16 bit fields also require teh upper address
+        if None != field.upper_address:
+            data.extend(field.upper_address)
+
+        data.extend(field.lower_address)
 
     # Initialize the new command packet with the proper header
     command_packet = bytearray()
@@ -100,7 +99,19 @@ def main():
 
     # Attach the command body, then calculate the checksum and append it
     command_packet.extend(data)
-    command_packet.append(__calculate_checksum__(command_packet))
+    command_packet.append(__calculate_checksum__(command_packet))  
+
+    return command_packet
+
+
+def main():
+    # 0x80:dest:src:datasize:command:datamultibytes:checksum
+
+    target_fields = []
+    target_fields.append(SSMFields.battery_voltage)
+    #target_fields.append(SSMFields.ooolant_temperature)
+
+    command_packet = build_command_packet(target_fields)
 
     print(__get_hex_string__(command_packet))
 

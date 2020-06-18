@@ -1,21 +1,67 @@
-import struct
 import time
 import serial
 
 # Invaluable reference for SSM: http://romraider.com/RomRaider/SsmProtocol
 
-class SelectMonitorConstants:
-    header = 0x80
-    ecu = 0x10
-    diag_tool = 0xF0
-    read_address = 0xA8
-    address_pad = 0x00
+class SSMPacketComponents:
+    ecu_command_header = bytearray([0x80, 0x10, 0xF0])
+    data_padding = 0x00
+    read_address_command = 0xA8
+    ecu_init_command = 0xBF
+
+class SSMUnit:
+    name = ""
+    symbol = ""
+    # TODO: lambdas for unit conversions
+
+    def __init__(self, name="", symbol=""):
+        self.name = name
+        self.symbol = symbol
+
+class SSMUnits:
+    unknown = SSMUnit("Unknown", "UNK")
+    celsius = SSMUnit("Celsius", "C")
+    rpm = SSMUnit("Rotations Per Minute", "RPM")
+    volts = SSMUnit("Volts", "V")
+    percent = SSMUnit("Percent", "%")
+    psig = SSMUnit("PSI Gauge", "PSIG")
+
+class SSMField:
+    upper_address = None
+    lower_address = None
+    upper_value = None
+    lower_value = None
+    name = ""
+    unit = SSMUnits.unknown
+
+    def __init__(
+        self, 
+        upper_address=None, lower_address=None,
+        upper_byte=None, lower_byte=None,
+        name="", unit=SSMUnits.unknown
+    ):
+        self.upper_address = upper_address
+        self.lower_address = lower_address
+        self.upper_byte = upper_byte
+        self.lower_byte = lower_byte
+        self.name = name
+        self.unit = unit
+
+    # TODO: def get_imperial_value() and get_metric_value()
+
+class SSMFields:
+    ooolant_temperature = SSMField(lower_address=bytearray([0x00,0x00,0x08]), name="Coolant Temperature", unit=SSMUnits.celsius)
+    battery_voltage = SSMField(lower_address=bytearray([0x00,0x00,0x1c]), name="Battery Voltage", unit=SSMUnits.volts)
+    #engine_load = SSMField(lower_address=bytearray([0x00,0x07,0x00]), name="Engine Load", unit=SSMUnits.percent)
+    #manifold_absolute_pressure = SSMField(lower_address=bytearray([0x00,0x0D,0x00]), name="Manifold Absolute Pressure", unit=SSMUnits.psig)
+    #throttle_position = SSMField(lower_address=bytearray([0x01,0x05,0x00]), name="Throttle Position", unit=SSMUnits.percent)
+
 
 class SelectMonitor:
-
     serial = None
 
     def __init__(self, port):
+        print("Starting serial connection...")
         self.serial = serial.Serial(
             port, baudrate = 4800,
             bytesize = serial.EIGHTBITS, parity = serial.PARITY_NONE,
@@ -25,9 +71,12 @@ class SelectMonitor:
             print("Error opening serial port")
             raise Exception("Open serial connection")
 
+        print("Succesfully established connection")
+
     def __del__(self):
-        if self.serial.is_open:
-            self.serial.close()
+        print("Closing serial connection...")
+        # if self.serial.is_open:
+        #     self.serial.close()
             
     def __get_hex_string__(self, byte_data):
         hex_string = ""
@@ -57,30 +106,41 @@ class SelectMonitor:
 
         return pack_format_string
 
-    def build_read_address_command(self, address_bytes):
-        data_byte_count = 5 # TODO: Actual calculation when accepting multple addresses
-        header_byte_count = 4 # Should be pretty static (0x80, destination, source)
 
-        # Create the initial command byte package, then send it off for checksum calculation
-        ssm_consts = SelectMonitorConstants()
-        pack_format_string = self.__build_pack_format_string__(data_byte_count + header_byte_count)
-        command_bytes = struct.pack(
-            pack_format_string, 
-            ssm_consts.header, ssm_consts.ecu, ssm_consts.diag_tool, data_byte_count, ssm_consts.read_address,
-            ssm_consts.address_pad, address_bytes[0], address_bytes[1], address_bytes[2]
-        )
-        checksum = self.__calculate_checksum__(command_bytes)
+    def build_ecu_init_packet(self):
+        command_packet = bytearray()
+        command_packet.extend(SSMPacketComponents.ecu_command_header)
+        command_packet.append(0x02) # Size byte for ECU init command
+        command_packet.append(SSMPacketComponents.ecu_init_command)
+        command_packet.append(self.__calculate_checksum__(command_packed))
+        return command_packet
 
-        # Repack the bytes with the checksum attached
-        pack_format_string = self.__build_pack_format_string__(data_byte_count + header_byte_count + 1)
-        command_bytes = struct.pack(
-            pack_format_string,
-            ssm_consts.header, ssm_consts.ecu, ssm_consts.diag_tool, data_byte_count, ssm_consts.read_address,
-            ssm_consts.address_pad, address_bytes[0], address_bytes[1], address_bytes[2],
-            checksum
-        )
+    def build_address_read_packet(self, target_field_array):
+        # Use extend() for adding other byte arrays, append() for single bytes
+        # Put together the command data which is a single command byte and the address(es)
+        data = bytearray()
+        data.append(SSMPacketComponents.read_address_command)
+        data.append(SSMPacketComponents.data_padding)
 
-        return command_bytes
+        for field in target_field_array:
+            # Add the upper address for fields with 16 bit values
+            if None != field.upper_address:
+                data.extend(field.upper_address)
+
+            data.extend(field.lower_address)
+
+        # Initialize the new command packet with the proper header
+        command_packet = bytearray()
+        command_packet.extend(SSMPacketComponents.ecu_command_header)
+
+        # Add the size byte, this is the number of address bytes + the command byte
+        command_packet.append(len(data))
+
+        # Attach the command body, then calculate the checksum and append it
+        command_packet.extend(data)
+        command_packet.append(self.__calculate_checksum__(command_packet))  
+
+        return command_packet  
 
     def test_command(self, command):
         print("Command to send: {}".format(self.__get_hex_string__(command)))
@@ -106,5 +166,3 @@ class SelectMonitor:
             print("Received response, bytes in waiting: {}".format(bytes_waiting))
             received_bytes = self.serial.read(bytes_waiting)
             print("Received bytes:  {}".format(self.__get_hex_string__(received_bytes)))
-
-
