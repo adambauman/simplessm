@@ -13,7 +13,7 @@ def main():
 
     target_fields = []
     target_fields.append(SSMFields.battery_voltage)
-    #target_fields.append(SSMFields.ooolant_temperature)
+    target_fields.append(SSMFields.coolant_temperature)
     
     command = ssm.build_address_read_packet(target_fields)
     ssm.test_command(command)
