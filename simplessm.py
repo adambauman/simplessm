@@ -1,6 +1,6 @@
 import time
 import serial
-from ssm_data import SSMFields, SSMPacketComponents, SSMUnits
+from ssm_data import SSMPacketComponents, SSMUnits
 
 # Invaluable reference for SSM: http://romraider.com/RomRaider/SsmProtocol
 
@@ -45,14 +45,6 @@ class SelectMonitor:
         print("Checksum: {:#04x}".format(checksum))
 
         return checksum
-
-    def __build_pack_format_string__(self, byte_count):
-        pack_format_string = "!"
-        for x in range(byte_count):
-            pack_format_string += "B"
-
-        return pack_format_string
-
 
     def build_ecu_init_packet(self):
         command_packet = bytearray()
