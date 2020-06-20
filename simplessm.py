@@ -54,7 +54,7 @@ class SelectMonitor:
         command_packet.append(self.__calculate_checksum__(command_packet))
         return command_packet
 
-    def build_address_read_packet(self, target_field_array):
+    def __build_address_read_packet__(self, target_field_array):
         # Use extend() for adding other byte arrays, append() for single bytes
         # Put together the command data which is a single command byte and the address(es)
         data = bytearray()
@@ -79,22 +79,26 @@ class SelectMonitor:
         command_packet.extend(data)
         command_packet.append(self.__calculate_checksum__(command_packet))  
 
-        return command_packet  
+        return command_packet
 
-    def test_command(self, command):
+
+    def read_fields(self, target_field_array):
+        # Build the command packet, we can grab multiple addresses in one shot
+        command = self.__build_address_read_packet__(target_field_array)
+
         print("Command to send: {}".format(self.__get_hex_string__(command)))
         print("Writing command...")
         self.serial.write(command)        
         ("Finished writing command")
         
-        time.sleep(0.1)
+        #time.sleep(0.1)
         
         print("Waiting for response...")
         bytes_waiting = self.serial.in_waiting
         wait_count = 0 # TODO: Replace with proper timeout check
         while 0 == bytes_waiting:
             print("Waiting...")
-            time.sleep(0.1)
+            time.sleep(0.05)
             bytes_waiting = self.serial.in_waiting
             wait_count = wait_count + 1
             if 10 < wait_count:

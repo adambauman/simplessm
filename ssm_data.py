@@ -24,27 +24,34 @@ class SSMUnits:
 class SSMField:
     upper_address = None
     lower_address = None
-    upper_value = None
-    lower_value = None
+    upper_value_byte = None
+    lower_value_byte = None
     name = ""
     unit = SSMUnits.unknown
+    conversion = None
 
     def __init__(
-        self, 
-        upper_address=None, lower_address=None,
-        upper_byte=None, lower_byte=None,
-        name="", unit=SSMUnits.unknown
+        self, name, unit, conversion, lower_address, upper_address=None
     ):
         self.upper_address = upper_address
         self.lower_address = lower_address
-        self.upper_byte = upper_byte
-        self.lower_byte = lower_byte
         self.name = name
         self.unit = unit
+        self.conversion = conversion # lambda to convert byte data into value
+
+    def get_value(self):
+        return self.conversion(self.upper_value_byte, self.lower_value_byte)
 
 class SSMFields:
-    coolant_temperature = SSMField(lower_address=bytearray([0x00,0x00,0x08]), name="Coolant Temperature", unit=SSMUnits.celsius)
-    battery_voltage = SSMField(lower_address=bytearray([0x00,0x00,0x1c]), name="Battery Voltage", unit=SSMUnits.volts)
+    #coolant_temperature = SSMField(
+    #    lower_address=bytearray([0x00,0x00,0x08]), name="Coolant Temperature", 
+    #    unit=SSMUnits.celsius, value=__get_volts__(self.lower_byte)
+    #)
+
+    battery_voltage = SSMField(
+        lower_address=bytearray([0x00,0x00,0x1c]), name="Battery Voltage",
+        unit=SSMUnits.volts, conversion=lambda upper_value_byte,lower_value_byte:lower_value_byte * 0.08
+    )
     #engine_load = SSMField(lower_address=bytearray([0x00,0x07,0x00]), name="Engine Load", unit=SSMUnits.percent)
     #manifold_absolute_pressure = SSMField(lower_address=bytearray([0x00,0x0D,0x00]), name="Manifold Absolute Pressure", unit=SSMUnits.psig)
     #throttle_position = SSMField(lower_address=bytearray([0x01,0x05,0x00]), name="Throttle Position", unit=SSMUnits.percent)
