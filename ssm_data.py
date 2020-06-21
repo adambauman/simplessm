@@ -56,7 +56,7 @@ class SSMFields:
     )
 
     vehicle_speed = SSMField(
-        lower_address=bytearray(0x00,0x00,0x10), name="Vehicle Speed",
+        lower_address=bytearray([0x00,0x00,0x10]), name="Vehicle Speed",
         unit=SSMUnits.kmh, conversion=lambda msb,lsb:lsb
     )
 

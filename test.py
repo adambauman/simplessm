@@ -15,9 +15,10 @@ def main():
     target_fields = []
     target_fields.append(SSMFields.battery_voltage)
     target_fields.append(SSMFields.coolant_temperature)
+    target_fields.append(SSMFields.throttle_opening_angle)
     
-    data = ssm.read_fields(target_fields)
-    print(data)
+    ssm_data = ssm.read_fields_continuous(target_fields)
+    #time.sleep(0.1)
     
 
 if __name__ == "__main__":

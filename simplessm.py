@@ -6,6 +6,7 @@ from ssm_data import SSMPacketComponents, SSMUnits
 
 class SelectMonitor:
     serial = None
+    
 
     def __init__(self, port):
         print("Starting serial connection...")
@@ -33,7 +34,7 @@ class SelectMonitor:
         return hex_string
         
     def __calculate_checksum__(self, data_bytes):
-        print("Calculating checksum for this data: {}".format(self.__get_hex_string__(data_bytes)))
+        #print("Calculating checksum for this data: {}".format(self.__get_hex_string__(data_bytes)))
 
         # Step 1: Get the sum of all data bytes including the header, command, and data bytes.
         data_byte_sum = 0
@@ -42,7 +43,7 @@ class SelectMonitor:
         
         # Step 2: Peel off the 8 lowest bits from the sum, this is the checksum value.
         checksum = data_byte_sum & 0xFF
-        print("Checksum: {:#04x}".format(checksum))
+        #print("Checksum: {:#04x}".format(checksum))
 
         return checksum
 
@@ -81,24 +82,48 @@ class SelectMonitor:
 
         return command_packet
 
+    
+    def read_fields_continuous(self, target_field_array):
+        # Build the command packet, we can grab multiple addresses in one shot
+        command = self.__build_address_read_packet__(target_field_array)
+        command_size = (len(command) * 2) + len(target_field_array) - 1
+        
+        while True:
+            self.serial.write(command)
+            print("Command size: {}".format(command_size))
+            bytes_waiting = 0
+            print("Bytes waiting: {}".format(bytes_waiting))
+
+            while command_size > bytes_waiting:
+                #print("Waiting...")
+                time.sleep(0.07)
+                bytes_waiting = self.serial.in_waiting
+                print("Bytes waiting: {}".format(bytes_waiting))
+
+            
+            received_bytes = self.serial.read(bytes_waiting)
+            print("Received bytes:  {}".format(self.__get_hex_string__(received_bytes)))
+
+        return received_bytes
+    
 
     def read_fields(self, target_field_array):
         # Build the command packet, we can grab multiple addresses in one shot
         command = self.__build_address_read_packet__(target_field_array)
 
-        print("Command to send: {}".format(self.__get_hex_string__(command)))
-        print("Writing command...")
+        #print("Command to send: {}".format(self.__get_hex_string__(command)))
+        #print("Writing command...")
         self.serial.write(command)        
-        ("Finished writing command")
+        #("Finished writing command")
         
         #time.sleep(0.1)
         
-        print("Waiting for response...")
+        #print("Waiting for response...")
         bytes_waiting = self.serial.in_waiting
         wait_count = 0 # TODO: Replace with proper timeout check
         while 0 == bytes_waiting:
-            print("Waiting...")
-            time.sleep(0.05)
+            #print("Waiting...")
+            time.sleep(0.1)
             bytes_waiting = self.serial.in_waiting
             wait_count = wait_count + 1
             if 10 < wait_count:
@@ -106,7 +131,7 @@ class SelectMonitor:
                 break
         
         if 0 != bytes_waiting:
-            print("Received response, bytes in waiting: {}".format(bytes_waiting))
+            #print("Received response, bytes in waiting: {}".format(bytes_waiting))
             received_bytes = self.serial.read(bytes_waiting)
             print("Received bytes:  {}".format(self.__get_hex_string__(received_bytes)))
 
