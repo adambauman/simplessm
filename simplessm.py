@@ -4,7 +4,7 @@ from ssm_data import SSMPacketComponents, SSMUnits
 
 # Invaluable reference for SSM: http://romraider.com/RomRaider/SsmProtocol
 
-class SelectMonitor:
+class SimpleSSM:
     serial = None
 
     def __init__(self, port):

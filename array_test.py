@@ -1,4 +1,4 @@
-import simplessm
+#import simplessm
 
 class SSMPacketComponents:
     ecu_command_header = bytearray([0x80, 0x10, 0xF0])
@@ -43,7 +43,6 @@ class SSMField:
         self.name = name
         self.unit = unit
 
-    # TODO: def get_imperial_value() and get_metric_value()
 
 class SSMFields:
     ooolant_temperature = SSMField(lower_address=bytearray([0x00,0x00,0x08]), name="Coolant Temperature", unit=SSMUnits.celsius)
