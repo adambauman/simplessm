@@ -20,6 +20,8 @@ class SSMUnits:
     volts = SSMUnit("Volts", "V")
     percent = SSMUnit("Percent", "%")
     psig = SSMUnit("PSI Gauge", "PSIG")
+    grams_s = SSMUnit("Grams per second", "Grams/s")
+    degrees = SSMUnit("Degrees", "deg")
 
 class SSMField:
     upper_address = None
@@ -48,6 +50,16 @@ class SSMFields:
         unit=SSMUnits.percent, conversion=lambda msb,lsb:(lsb * 100) / 255
     )
 
+    engine_speed = SSMField(
+        upper_address=bytearray([0x00,0x00,0x0E]), lower_address=([0x00,0x00,0x0F]), name="Engine Speed",
+        unit=SSMUnits.rpm, conversion=lambda msb,lsb:(lsb + (msb << 8)) / 4
+    )
+
+    vehicle_speed = SSMField(
+        lower_address=bytearray(0x00,0x00,0x10), name="Vehicle Speed",
+        unit=SSMUnits.kmh, conversion=lambda msb,lsb:lsb
+    )
+
     coolant_temperature = SSMField(
         lower_address=bytearray([0x00,0x00,0x08]), name="Coolant Temperature",
         unit=SSMUnits.celsius, conversion=lambda msb,lsb:lsb - 40
@@ -68,12 +80,29 @@ class SSMFields:
         unit=SSMUnits.psig, conversion=lambda msb,lsb:((lsb - 128) * 37) / 255
     )
 
-    manifold_absolute_pressure = SSMFields(
-        lower_address=([0x00,0x00,0x0D], name="Manifold Absolute Pressure",
-        unit=SSMUnits.psig, conversion=lambda msb,ldb:(lsb * 37) / 255
+    manifold_absolute_pressure = SSMField(
+        lower_address=bytearray([0x00,0x00,0x0D]), name="Manifold Absolute Pressure",
+        unit=SSMUnits.psig, conversion=lambda msb,lsb:(lsb * 37) / 255
     )
 
-    engine_speed = SSMFields(
-        upper_address=([0x00,0x00,0x0E]), lower_address=([0x00,0x00,0x0F]), name="Engine Speed",
-        unit=SSMUnits.rpm, conversion=lambda msb,lsb:(lsb + (msb << 8)) / 4
+    atmospheric_pressure = SSMField(
+        lower_address=bytearray([0x00,0x00,0x23]), name="Atmospheric Pressure",
+        unit=SSMUnits.psig, conversion=lambda msb,lsb:(lsb * 37) / 255
     )
+
+    intake_temperature = SSMField(
+        lower_address=bytearray([0x00,0x00,0x12]), name="Intake Temperature",
+        unit=SSMUnits.celsius, conversion=lambda msb,lsb:lsb - 40
+    )
+
+    mass_air_flow = SSMField(
+        upper_address=bytearray([0x00,0x00,0x13]), lower_address=bytearray([0x00,0x00,0x14]), name="Mass Air Flow",
+        unit=SSMUnits.grams_s, conversion=lambda msb,lsb:(lsb + (msb << 8)) / 100
+    )
+
+    knock_correction = SSMField(
+        lower_address=bytearray([0x00,0x00,0x22]), name="Knock Correction",
+        unit=SSMUnits.degrees, conversion=lambda msb,lsb:(lsb - 128) / 2
+    )
+
+

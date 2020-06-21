@@ -1,7 +1,8 @@
 import time
 import struct
 
-from simplessm import SelectMonitor, SSMFields
+from simplessm import SelectMonitor
+from ssm_data import SSMFields
 
 class Configuration:
     port_name = "/dev/ttyUSB0"
@@ -15,8 +16,8 @@ def main():
     target_fields.append(SSMFields.battery_voltage)
     target_fields.append(SSMFields.coolant_temperature)
     
-    command = ssm.build_address_read_packet(target_fields)
-    ssm.test_command(command)
+    data = ssm.read_fields(target_fields)
+    print(data)
     
 
 if __name__ == "__main__":

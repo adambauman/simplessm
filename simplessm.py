@@ -4,7 +4,7 @@ from ssm_data import SSMPacketComponents, SSMUnits
 
 # Invaluable reference for SSM: http://romraider.com/RomRaider/SsmProtocol
 
-class SimpleSSM:
+class SelectMonitor:
     serial = None
 
     def __init__(self, port):
@@ -109,3 +109,5 @@ class SimpleSSM:
             print("Received response, bytes in waiting: {}".format(bytes_waiting))
             received_bytes = self.serial.read(bytes_waiting)
             print("Received bytes:  {}".format(self.__get_hex_string__(received_bytes)))
+
+        return received_bytes
