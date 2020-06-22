@@ -104,5 +104,3 @@ class SSMFields:
         lower_address=bytearray([0x00,0x00,0x22]), name="Knock Correction",
         unit=SSMUnits.degrees, conversion=lambda msb,lsb:(lsb - 128) / 2
     )
-
-

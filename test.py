@@ -17,9 +17,8 @@ def main():
     target_fields.append(SSMFields.coolant_temperature)
     target_fields.append(SSMFields.throttle_opening_angle)
     
-    ssm_data = ssm.read_fields_continuous(target_fields)
-    #time.sleep(0.1)
-    
+    #ssm_data = ssm.read_fields_continuous(target_fields)
+    ssm_data = ssm.read_fields(target_fields)
 
 if __name__ == "__main__":
     main()
