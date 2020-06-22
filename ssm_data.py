@@ -41,6 +41,9 @@ class SSMField:
         self.unit = unit
         self.conversion = conversion
 
+    def __str__(self):
+        return str(self.__class__) + ": " + str(self.__dict__)
+
     def get_value(self):
         return self.conversion(self.upper_value_byte, self.lower_value_byte)
 
