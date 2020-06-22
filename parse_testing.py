@@ -85,6 +85,10 @@ def main():
     response_bytes = bytes.fromhex("80 10 f0 0b a8 00 00 00 1c 00 00 08 00 00 15 6c 80 f0 10 04 e8 95 3d 00 3e")
     print("response_bytes: {}".format(get_hex_string(response_bytes)))
 
+    # Grab the checksum byte in case we want to validate
+    response_checksum = response_bytes[-1]
+    print("response_checksum: {:#04x}".format(response_checksum))
+
     # Response starts with some echo output, find the location of the respones header
     response_header_index = response_bytes.find(bytes.fromhex("80 f0 10"))
     print("response_header_index: {}".format(response_header_index))
@@ -93,10 +97,6 @@ def main():
     # Subtract 1 byte because the size also includes the response "command" of 0xE8
     response_data_size = response_bytes[response_header_index + 3] - 1
     print("response_data_size: {}".format(response_data_size))
-
-    # Avoid out-of-range errors and make sure we have the expected data
-    if response_data_size != len(target_fields):
-        raise Exception("Response data size mismatch")
 
     data_index = response_header_index + 5 # skip response header, size byte, and 0xE8 command
     # Start working through the data and data fields
@@ -112,9 +112,6 @@ def main():
     for field in target_fields:
         #print(field)
         print("{}: {}{}".format(field.name,field.get_value(),field.unit.symbol))
-
-    #parse_result = parse_field_response(received_bytes, command_bytes, target_fields, False)
-    #print(parse_result)
 
 
 if __name__ == "__main__":
