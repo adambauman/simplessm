@@ -138,6 +138,9 @@ class SelectMonitor:
         
         # +1 for the 0xE8 nestled between response header and data bytes
         expected_response_size += 1
+        
+        # +1 for the single value count byte
+        expected_response_size += 1
 
         for field in field_list:
             if None != field.upper_value_byte:
@@ -151,26 +154,32 @@ class SelectMonitor:
         return expected_response_size
 
 
-    def __populate_fields__(self, field_list, command):
+    def __populate_fields__(self, field_list, command, max_read_attempts=200):
         assert 0 != len(field_list)
         assert 0 != len(command)
 
         self.serial.write(command)
 
         expected_response_size = self.__calculate_expected_respone_size__(field_list, command)
-        print("Expected response size: {}".format(expected_response_size))
-        #response_bytes = None
-        timeout = time.time() + 0.25
-        while time.time() < timeout:
+        #print("Expected response size: {}".format(expected_response_size))
+        read_attempts = 0
+        while read_attempts < max_read_attempts:
+            # TODO: Proper timeout logic or threading of serial reads
             if expected_response_size > self.serial.in_waiting:
-                print("in_waiting: {}".format(self.serial.in_waiting))
+                #print("in_waiting: {}".format(self.serial.in_waiting))
+                read_attempts += 1
+                # HACK, keeps from hammering too hard, 4800 baud = ~1.5 bytes per second... I think?
+                time.sleep(0.001)
                 continue
 
             response_bytes = self.serial.read(self.serial.in_waiting)
             break
+        
+        if read_attempts >= max_read_attempts:
+            raise Exception("Hit max read attempts")
 
-        if expected_response_size != len(response_bytes):
-            raise Exception("Response size mismatch")
+        #if expected_response_size != len(response_bytes):
+            #raise Exception("Response size mismatch, expected: {}, got: {}".format(expected_response_size, len(response_bytes)))
 
         self.__parse_field_response__(response_bytes, field_list)
 

@@ -18,8 +18,9 @@ def main():
     field_list.append(SSMFields.throttle_opening_angle)
     field_list.append(SSMFields.intake_temperature)
     field_list.append(SSMFields.manifold_relative_pressure)
+    field_list.append(SSMFields.engine_speed)
     
-    #ssm.read_fields_continuous(field_list)
+    ssm.read_fields_continuous(field_list)
 
     ssm.read_fields(field_list)
     for field in field_list:
