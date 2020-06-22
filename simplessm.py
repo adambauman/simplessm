@@ -1,5 +1,6 @@
 import time
 import serial
+from os import system
 from ssm_data import SSMPacketComponents, SSMUnits
 
 # Invaluable reference for SSM: http://romraider.com/RomRaider/SsmProtocol
@@ -91,11 +92,11 @@ class SelectMonitor:
         # Response starts with some echo output, find the location of the respones header
         #response_header_index = response_bytes.find(bytes.fromhex("80 f0 10"))
         response_header_index = response_bytes.find(SSMPacketComponents.ecu_response_header)
-        print("response_header_index: {}".format(response_header_index))
+        #print("response_header_index: {}".format(response_header_index))
 
         if validate_checksum:
             calculated_checksum = self.__calculate_checksum__(response_bytes[response_header_index:-1])
-            print("calculated_checksum: {:#04x}".format(calculated_checksum))
+            #print("calculated_checksum: {:#04x}".format(calculated_checksum))
             if calculated_checksum != response_bytes[-1]:
                 raise Exception("Response checksum mismatch")
 
@@ -136,50 +137,54 @@ class SelectMonitor:
 
         print("Command size: {}".format(len(command)))
         print("Expected response size: {}".format(expected_response_size))
-
+        output_string = ""
         while True:
             self.serial.write(command)           
             bytes_waiting = 0
 
             while expected_response_size > bytes_waiting:
                 #print("Waiting...")
-                time.sleep(0.02)
+                #time.sleep(0.02)
                 bytes_waiting = self.serial.in_waiting
                 #print("Bytes waiting: {}".format(bytes_waiting))
 
             received_bytes = self.serial.read(bytes_waiting)
-            print("Received bytes:  {}".format(self.__get_hex_string__(received_bytes)))
+            #print("Received bytes:  print '{0}\r'.format(x){}".format(self.__get_hex_string__(received_bytes)))
+            self.parse_field_response(received_bytes, target_field_array, True)
+            
+            for field in target_field_array:
+                output_string += "{}: {}{}\n".format(field.name, field.get_value(), field.unit.symbol)
+                
+            #system("clear")
+            print(output_string)               
+            output_string = ""
 
-        return received_bytes
+        #return received_bytes
     
-
+    
     def read_fields(self, target_field_array):
         # Build the command packet, we can grab multiple addresses in one shot
         command = self.__build_address_read_packet__(target_field_array)
+        
+        # Expected response: ECHOED_COMMAND + 3_BYTE_HEADER + VALUES + CHECKSUM
+        expected_response_size = len(command) + 3 + len(target_field_array) + 1
 
-        #print("Command to send: {}".format(self.__get_hex_string__(command)))
-        #print("Writing command...")
-        self.serial.write(command)        
-        #("Finished writing command")
-        
-        #time.sleep(0.1)
-        
-        #print("Waiting for response...")
-        bytes_waiting = self.serial.in_waiting
-        wait_count = 0 # TODO: Replace with proper timeout check
-        while 0 == bytes_waiting:
+        #print("Command size: {}".format(len(command)))
+        #print("Expected response size: {}".format(expected_response_size))
+
+        self.serial.write(command)           
+        bytes_waiting = 0
+        while expected_response_size > bytes_waiting:
             #print("Waiting...")
-            time.sleep(0.1)
+            #time.sleep(0.02)
             bytes_waiting = self.serial.in_waiting
-            wait_count = wait_count + 1
-            if 10 < wait_count:
-                print("Error, no response!")
-                break
-        
-        if 0 != bytes_waiting:
-            #print("Received response, bytes in waiting: {}".format(bytes_waiting))
-            received_bytes = self.serial.read(bytes_waiting)
-            print("Received bytes:  {}".format(self.__get_hex_string__(received_bytes)))
-            self.parse_field_response(received_bytes, target_field_array, True)
+            #print("Bytes waiting: {}".format(bytes_waiting))
 
-        #return target_field_array
+        #print("Bytes waiting: {}".format(bytes_waiting))
+        received_bytes = self.serial.read(bytes_waiting)
+        #print("Received bytes:  {}".format(self.__get_hex_string__(received_bytes)))
+        
+        self.parse_field_response(received_bytes, target_field_array, True)
+
+        #return received_bytes
+
