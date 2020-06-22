@@ -7,7 +7,6 @@ from ssm_data import SSMPacketComponents, SSMUnits
 class SelectMonitor:
     serial = None
     
-
     def __init__(self, port):
         print("Starting serial connection...")
         self.serial = serial.Serial(
@@ -21,18 +20,21 @@ class SelectMonitor:
 
         print("Succesfully established connection")
 
+
     def __del__(self):
         print("Closing serial connection...")
         # if self.serial.is_open:
         #     self.serial.close()
-            
+
+
     def __get_hex_string__(self, byte_data):
         hex_string = ""
         for single_byte in byte_data:
             hex_string += "{:#04x} ".format(single_byte)
             
         return hex_string
-        
+
+
     def __calculate_checksum__(self, data_bytes):
         #print("Calculating checksum for this data: {}".format(self.__get_hex_string__(data_bytes)))
 
@@ -47,6 +49,7 @@ class SelectMonitor:
 
         return checksum
 
+
     def build_ecu_init_packet(self):
         command_packet = bytearray()
         command_packet.extend(SSMPacketComponents.ecu_command_header)
@@ -54,6 +57,7 @@ class SelectMonitor:
         command_packet.append(SSMPacketComponents.ecu_init_command)
         command_packet.append(self.__calculate_checksum__(command_packet))
         return command_packet
+
 
     def __build_address_read_packet__(self, target_field_array):
         # Use extend() for adding other byte arrays, append() for single bytes
@@ -82,31 +86,45 @@ class SelectMonitor:
 
         return command_packet
 
-    
-    def parse_field_response(self, response_bytes, command, command_fields, validate_checksum=False):
-        # TODO: Checksum validation
 
-        print("Parsing field response...")
-        response_checksum = response_bytes[-1] # Last byte should always be the checksum
-        print("Response checksum: {:#04}", response_checksum)
+    def parse_field_response(self, response_bytes, target_field_array, validate_checksum=True):
+        # Response starts with some echo output, find the location of the respones header
+        #response_header_index = response_bytes.find(bytes.fromhex("80 f0 10"))
+        response_header_index = response_bytes.find(SSMPacketComponents.ecu_response_header)
+        print("response_header_index: {}".format(response_header_index))
 
-        # Expected response: ECHOED_COMMAND + 3_BYTE_HEADER + VALUES + CHECKSUM
-        data_index = len(command) + 3
-        for command_field in command_fields:
-            print("Current data_index: {}".format(data_index))
-            if None != command_field.upper_address:
-                command_field.upper_value_byte = response_bytes[data_index]
-                print("Reading MSB: {:#04}".format(command_fields.upper_value_byte))
-                data_index = data_index + 1
+        if validate_checksum:
+            calculated_checksum = self.__calculate_checksum__(response_bytes[response_header_index:-1])
+            print("calculated_checksum: {:#04x}".format(calculated_checksum))
+            if calculated_checksum != response_bytes[-1]:
+                raise Exception("Response checksum mismatch")
 
-            command_fields.lower_value_byte = response_bytes[data_index]
-            print("Reading LSB: {:#04}".format(command_fields.lower_value_byte))
-            data_index = data_index + 1
+        # Retrieve the number of data bytes to process, this comes right after the response header
+        # Subtract 1 byte because the size also includes the response "command" of 0xE8
+        response_data_size = response_bytes[response_header_index + 3] - 1
 
-        print("Finished parsing field response")
+        data_index = response_header_index + 5 # skip response header, size byte, and 0xE8 command
+        processed_bytes = 0
+        # Start working through the data and data fields
+        for field in target_field_array:
+            if processed_bytes > response_data_size:
+                raise Exception("Data index out of bounds")
 
-        return command_fields
+            if None != field.upper_address:
+                # Only set if this is a 16-bit value and we have a MSB to grab
+                field.upper_value_byte = response_bytes[data_index]
+                data_index += 1
+                processed_bytes += 1
 
+            field.lower_value_byte = response_bytes[data_index]
+            data_index += 1
+            processed_bytes += 1
+
+        if processed_bytes != response_data_size:
+            raise Exception("Data index and response data size mismatch")
+
+        # Treating target_fields as referenced seems to be working alright
+        #return target_fields
 
 
     def read_fields_continuous(self, target_field_array):
@@ -162,6 +180,6 @@ class SelectMonitor:
             #print("Received response, bytes in waiting: {}".format(bytes_waiting))
             received_bytes = self.serial.read(bytes_waiting)
             print("Received bytes:  {}".format(self.__get_hex_string__(received_bytes)))
-            parsed_data = self.parse_field_response(received_bytes, command, command_fields, False)
+            self.parse_field_response(received_bytes, target_field_array, True)
 
-        return received_bytes
+        #return target_field_array

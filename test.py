@@ -17,8 +17,10 @@ def main():
     target_fields.append(SSMFields.coolant_temperature)
     target_fields.append(SSMFields.throttle_opening_angle)
     
-    #ssm_data = ssm.read_fields_continuous(target_fields)
-    ssm_data = ssm.read_fields(target_fields)
+    ssm.read_fields(target_fields)
+
+    for field in target_fields:
+        print("{}: {}{}".format(field.name, field.get_value(), field.unit.symbol))
 
 if __name__ == "__main__":
     main()

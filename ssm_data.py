@@ -1,8 +1,10 @@
 class SSMPacketComponents:
     ecu_command_header = bytearray([0x80, 0x10, 0xF0])
+    ecu_response_header = bytearray([0x80, 0xF0, 0x10])
     data_padding = 0x00
     read_address_command = 0xA8
     ecu_init_command = 0xBF
+
 
 class SSMUnit:
     name = ""
@@ -11,6 +13,7 @@ class SSMUnit:
     def __init__(self, name="", symbol=""):
         self.name = name
         self.symbol = symbol
+
 
 class SSMUnits:
     unknown = SSMUnit("Unknown", "UNK")
@@ -22,6 +25,7 @@ class SSMUnits:
     psig = SSMUnit("PSI Gauge", "PSIG")
     grams_s = SSMUnit("Grams per second", "Grams/s")
     degrees = SSMUnit("Degrees", "deg")
+
 
 class SSMField:
     upper_address = None
@@ -46,6 +50,7 @@ class SSMField:
 
     def get_value(self):
         return self.conversion(self.upper_value_byte, self.lower_value_byte)
+
 
 class SSMFields:
     engine_load = SSMField(

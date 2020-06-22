@@ -49,29 +49,44 @@ def build_address_read_packet(target_field_array):
     return command_packet
 
 
-def parse_field_response(response_bytes, command, command_fields, validate_checksum=False):
-    # TODO: Checksum validation
+def parse_field_response(response_bytes, target_fields, validate_checksum=True):
+    # Response starts with some echo output, find the location of the respones header
+    #response_header_index = response_bytes.find(bytes.fromhex("80 f0 10"))
+    response_header_index = response_bytes.find(SSMPacketComponents.ecu_response_header)
+    print("response_header_index: {}".format(response_header_index))
 
-    print("Parsing field response...")
-    response_checksum = response_bytes[-1] # Last byte should always be the checksum
-    print("Response checksum: {:#04x}".format(response_checksum))
+    if validate_checksum:
+        calculated_checksum = calculate_checksum(response_bytes[response_header_index:-1])
+        print("calculated_checksum: {:#04x}".format(calculated_checksum))
+        if calculated_checksum != response_bytes[-1]:
+            raise Exception("Response checksum mismatch")
 
-    # Expected response: ECHOED_COMMAND + 3_BYTE_HEADER + VALUES + CHECKSUM
-    data_index = len(command) + 3
-    for command_field in command_fields:
-        print("Current data_index: {}".format(data_index))
-        if None != command_field.upper_address:
-            command_field.upper_value_byte = response_bytes[data_index]
-            print("Reading MSB: {:#04x}".format(command_fields.upper_value_byte))
-            data_index = data_index + 1
+    # Retrieve the number of data bytes to process, this comes right after the response header
+    # Subtract 1 byte because the size also includes the response "command" of 0xE8
+    response_data_size = response_bytes[response_header_index + 3] - 1
 
-        command_fields.lower_value_byte = response_bytes[data_index]
-        print("Reading LSB: {:#04x}".format(command_fields.lower_value_byte))
-        data_index = data_index + 1
+    data_index = response_header_index + 5 # skip response header, size byte, and 0xE8 command
+    processed_bytes = 0
+    # Start working through the data and data fields
+    for field in target_fields:
+        if processed_bytes > response_data_size:
+            raise Exception("Data index out of bounds")
 
-    print("Finished parsing field response")
+        if None != field.upper_address:
+            # Only set if this is a 16-bit value and we have a MSB to grab
+            field.upper_value_byte = response_bytes[data_index]
+            data_index += 1
+            processed_bytes += 1
 
-    return command_fields
+        field.lower_value_byte = response_bytes[data_index]
+        data_index += 1
+        processed_bytes += 1
+
+    if processed_bytes != response_data_size:
+        raise Exception("Data index and response data size mismatch")
+
+    # Treating target_fields as referenced seems to be working alright
+    #return target_fields
 
 
 def main():
@@ -85,32 +100,9 @@ def main():
     response_bytes = bytes.fromhex("80 10 f0 0b a8 00 00 00 1c 00 00 08 00 00 15 6c 80 f0 10 04 e8 95 3d 00 3e")
     print("response_bytes: {}".format(get_hex_string(response_bytes)))
 
-    # Grab the checksum byte in case we want to validate
-    response_checksum = response_bytes[-1]
-    print("response_checksum: {:#04x}".format(response_checksum))
-
-    # Response starts with some echo output, find the location of the respones header
-    response_header_index = response_bytes.find(bytes.fromhex("80 f0 10"))
-    print("response_header_index: {}".format(response_header_index))
-
-    # Retrieve the number of data bytes to process, this comes right after the response header
-    # Subtract 1 byte because the size also includes the response "command" of 0xE8
-    response_data_size = response_bytes[response_header_index + 3] - 1
-    print("response_data_size: {}".format(response_data_size))
-
-    data_index = response_header_index + 5 # skip response header, size byte, and 0xE8 command
-    # Start working through the data and data fields
-    for field in target_fields:
-        if None != field.upper_address:
-            # Only set if this is a 16-bit value and we have a MSB to grab
-            field.upper_value_byte = response_bytes[data_index]
-            data_index += 1
-
-        field.lower_value_byte = response_bytes[data_index]
-        data_index += 1
+    parse_field_response(response_bytes, target_fields, True)
 
     for field in target_fields:
-        #print(field)
         print("{}: {}{}".format(field.name,field.get_value(),field.unit.symbol))
 
 
