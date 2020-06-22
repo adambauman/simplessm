@@ -1,6 +1,7 @@
 class SSMPacketComponents:
     ecu_command_header = bytearray([0x80, 0x10, 0xF0])
     ecu_response_header = bytearray([0x80, 0xF0, 0x10])
+    ecu_response_identifier= 0xE8 # Comes after the ECU response header, before value data
     data_padding = 0x00
     read_address_command = 0xA8
     ecu_init_command = 0xBF

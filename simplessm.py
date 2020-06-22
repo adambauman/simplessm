@@ -37,7 +37,7 @@ class SelectMonitor:
 
 
     def __calculate_checksum__(self, data_bytes):
-        #print("Calculating checksum for this data: {}".format(self.__get_hex_string__(data_bytes)))
+        assert 0 != len(data_bytes)
 
         # Step 1: Get the sum of all data bytes including the header, command, and data bytes.
         data_byte_sum = 0
@@ -60,14 +60,16 @@ class SelectMonitor:
         return command_packet
 
 
-    def __build_address_read_packet__(self, target_field_array):
+    def __build_address_read_packet__(self, field_list):
+        assert 0 != len(field_list)
+
         # Use extend() for adding other byte arrays, append() for single bytes
         # Put together the command data which is a single command byte and the address(es)
         data = bytearray()
         data.append(SSMPacketComponents.read_address_command)
         data.append(SSMPacketComponents.data_padding)
 
-        for field in target_field_array:
+        for field in field_list:
             # Add the upper address for fields with 16 bit values
             if None != field.upper_address:
                 data.extend(field.upper_address)
@@ -88,9 +90,11 @@ class SelectMonitor:
         return command_packet
 
 
-    def parse_field_response(self, response_bytes, target_field_array, validate_checksum=True):
+    def __parse_field_response__(self, response_bytes, field_list, validate_checksum=True):
+        assert 0 != len(response_bytes)
+        assert 0 != len(field_list)
+
         # Response starts with some echo output, find the location of the respones header
-        #response_header_index = response_bytes.find(bytes.fromhex("80 f0 10"))
         response_header_index = response_bytes.find(SSMPacketComponents.ecu_response_header)
         #print("response_header_index: {}".format(response_header_index))
 
@@ -107,7 +111,7 @@ class SelectMonitor:
         data_index = response_header_index + 5 # skip response header, size byte, and 0xE8 command
         processed_bytes = 0
         # Start working through the data and data fields
-        for field in target_field_array:
+        for field in field_list:
             if processed_bytes > response_data_size:
                 raise Exception("Data index out of bounds")
 
@@ -124,67 +128,72 @@ class SelectMonitor:
         if processed_bytes != response_data_size:
             raise Exception("Data index and response data size mismatch")
 
-        # Treating target_fields as referenced seems to be working alright
-        #return target_fields
+    
+    def __calculate_expected_respone_size__(self, field_list, command):
+        assert 0 != len(field_list)
+        assert 0 != len(command)
 
-
-    def read_fields_continuous(self, target_field_array):
-        # Build the command packet, we can grab multiple addresses in one shot
-        command = self.__build_address_read_packet__(target_field_array)
+        # Expected response: ECHOED_COMMAND + 3_BYTE_HEADER + 0XE8 + VALUES + CHECKSUM
+        expected_response_size = len(command) + len(SSMPacketComponents.ecu_response_header)
         
-        # Expected response: ECHOED_COMMAND + 3_BYTE_HEADER + VALUES + CHECKSUM
-        expected_response_size = len(command) + 3 + len(target_field_array) + 1
+        # +1 for the 0xE8 nestled between response header and data bytes
+        expected_response_size += 1
 
-        print("Command size: {}".format(len(command)))
+        for field in field_list:
+            if None != field.upper_value_byte:
+                # Account for MSB coming in for 16-bit values
+                expected_response_size += 1
+
+            expected_response_size += 1
+
+        # +1 for checksum byte, then return
+        expected_response_size += 1
+        return expected_response_size
+
+
+    def __populate_fields__(self, field_list, command):
+        assert 0 != len(field_list)
+        assert 0 != len(command)
+
+        self.serial.write(command)
+
+        expected_response_size = self.__calculate_expected_respone_size__(field_list, command)
         print("Expected response size: {}".format(expected_response_size))
+        #response_bytes = None
+        timeout = time.time() + 0.25
+        while time.time() < timeout:
+            if expected_response_size > self.serial.in_waiting:
+                print("in_waiting: {}".format(self.serial.in_waiting))
+                continue
+
+            response_bytes = self.serial.read(self.serial.in_waiting)
+            break
+
+        if expected_response_size != len(response_bytes):
+            raise Exception("Response size mismatch")
+
+        self.__parse_field_response__(response_bytes, field_list)
+
+        
+
+    def read_fields_continuous(self, field_list):
+        assert 0 != len(field_list)
+
+        command = self.__build_address_read_packet__(field_list)
         output_string = ""
         while True:
-            self.serial.write(command)           
-            bytes_waiting = 0
+            self.__populate_fields__(field_list, command)
 
-            while expected_response_size > bytes_waiting:
-                #print("Waiting...")
-                #time.sleep(0.02)
-                bytes_waiting = self.serial.in_waiting
-                #print("Bytes waiting: {}".format(bytes_waiting))
-
-            received_bytes = self.serial.read(bytes_waiting)
-            #print("Received bytes:  print '{0}\r'.format(x){}".format(self.__get_hex_string__(received_bytes)))
-            self.parse_field_response(received_bytes, target_field_array, True)
-            
-            for field in target_field_array:
+            for field in field_list:
                 output_string += "{}: {}{}\n".format(field.name, field.get_value(), field.unit.symbol)
                 
-            #system("clear")
             print(output_string)               
             output_string = ""
-
-        #return received_bytes
     
     
-    def read_fields(self, target_field_array):
-        # Build the command packet, we can grab multiple addresses in one shot
-        command = self.__build_address_read_packet__(target_field_array)
-        
-        # Expected response: ECHOED_COMMAND + 3_BYTE_HEADER + VALUES + CHECKSUM
-        expected_response_size = len(command) + 3 + len(target_field_array) + 1
+    def read_fields(self, field_list):
+        assert 0 != len(field_list)
 
-        #print("Command size: {}".format(len(command)))
-        #print("Expected response size: {}".format(expected_response_size))
-
-        self.serial.write(command)           
-        bytes_waiting = 0
-        while expected_response_size > bytes_waiting:
-            #print("Waiting...")
-            #time.sleep(0.02)
-            bytes_waiting = self.serial.in_waiting
-            #print("Bytes waiting: {}".format(bytes_waiting))
-
-        #print("Bytes waiting: {}".format(bytes_waiting))
-        received_bytes = self.serial.read(bytes_waiting)
-        #print("Received bytes:  {}".format(self.__get_hex_string__(received_bytes)))
-        
-        self.parse_field_response(received_bytes, target_field_array, True)
-
-        #return received_bytes
+        command = self.__build_address_read_packet__(field_list)
+        self.__populate_fields__(field_list, command)
 
