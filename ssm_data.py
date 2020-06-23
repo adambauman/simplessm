@@ -53,6 +53,11 @@ class SSMField:
         return self.conversion(self.upper_value_byte, self.lower_value_byte)
 
 
+class SSMCommand:
+    data = None
+    expected_response_size = 0
+    
+
 class SSMFields:
     engine_load = SSMField(
         lower_address=bytearray([0x00,0x00,0x07]), name="Engine Load", 

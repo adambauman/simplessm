@@ -1,7 +1,7 @@
 import time
 import serial
 from os import system
-from ssm_data import SSMPacketComponents, SSMUnits
+from ssm_data import SSMPacketComponents, SSMUnits, SSMCommand
 
 # Invaluable reference for SSM: http://romraider.com/RomRaider/SsmProtocol
 
@@ -69,41 +69,39 @@ class SelectMonitor:
         return command_packet
 
 
-    def __build_address_read_packet__(self, expected_response_size, field_list):
+    def __build_address_read_packet__(self, field_list):
         assert 0 != len(field_list)
-        assert 0 == expected_response_size
 
-        # We will set this as we build the command packet
-        expected_response_size = 0
+        command = SSMCommand
 
         # Use extend() for adding other byte arrays, append() for single bytes
         # Put together the command data which is a single command byte and the address(es)
-        data = bytearray()
-        data.append(SSMPacketComponents.read_address_command)
-        data.append(SSMPacketComponents.data_padding)
+        address_data = bytearray()
+        address_data.append(SSMPacketComponents.read_address_command)
+        address_data.append(SSMPacketComponents.data_padding)
 
         for field in field_list:
             # Add the upper address for fields with 16 bit values
             if None != field.upper_address:
-                data.extend(field.upper_address)
+                address_data.extend(field.upper_address)
 
-            data.extend(field.lower_address)
+            address_data.extend(field.lower_address)
 
         # Initialize the new command packet with the proper header
-        command_packet = bytearray()
-        command_packet.extend(SSMPacketComponents.ecu_command_header)
+        command.data = bytearray()
+        command.data.extend(SSMPacketComponents.ecu_command_header)
 
         # Add the size byte, this is the number of address bytes + the command byte
-        command_packet.append(len(data))
+        command.data.append(len(address_data))
 
         # Attach the command body, then calculate the checksum and append it
-        command_packet.extend(data)
-        command_packet.append(self.__calculate_checksum__(command_packet))
+        command.data.extend(address_data)
+        command.data.append(self.__calculate_checksum__(command.data))
 
         # Set the expected response size so we know how many bytes to read in
-        expected_response_size = self.__calculate_expected_response_size__(len(command_packet), len(data))
+        command.expected_response_size = self.__calculate_expected_response_size__(len(command.data), len(address_data))
 
-        return command_packet
+        return command
 
 
     def __parse_field_response__(self, response_bytes, field_list, validate_checksum=True):
@@ -162,17 +160,17 @@ class SelectMonitor:
         return expected_response_size
 
 
-    def __populate_fields__(self, field_list, command, expected_response_size, max_read_attempts=200):
+    def __populate_fields__(self, field_list, command, max_read_attempts=200):
         assert 0 != len(field_list)
-        assert 0 != len(command)
-        assert 0 != expected_response_size
+        assert 0 != len(command.data)
+        assert 0 != command.expected_response_size
 
-        self.serial.write(command)
+        self.serial.write(command.data)
 
         read_attempts = 0
         while read_attempts < max_read_attempts:
             # TODO: Proper timeout logic or threading of serial reads
-            if expected_response_size > self.serial.in_waiting:
+            if command.expected_response_size > self.serial.in_waiting:
                 read_attempts += 1
                 # HACK, keeps from hammering too hard, 4800 baud = ~2.08ms per byte
                 time.sleep(0.002)
@@ -184,8 +182,8 @@ class SelectMonitor:
         if read_attempts >= max_read_attempts:
             raise Exception("Hit max read attempts")
 
-        if expected_response_size != len(response_bytes):
-            raise Exception("Response size mismatch, expected: {}, got: {}".format(expected_response_size, len(response_bytes)))
+        if command.expected_response_size != len(response_bytes):
+            raise Exception("Response size mismatch, expected: {}, got: {}".format(command.expected_response_size, len(response_bytes)))
 
         self.__parse_field_response__(response_bytes, field_list)
 
@@ -193,11 +191,10 @@ class SelectMonitor:
     def read_fields_continuous(self, field_list):
         assert 0 != len(field_list)
 
-        expected_response_size = 0
-        command = self.__build_address_read_packet__(expected_response_size, field_list)
+        command = self.__build_address_read_packet__(field_list)
         output_string = ""
         while True:
-            self.__populate_fields__(field_list, command, expected_response_size)
+            self.__populate_fields__(field_list, command)
 
             for field in field_list:
                 output_string += "{}: {}{}\n".format(field.name, field.get_value(), field.unit.symbol)
@@ -209,7 +206,6 @@ class SelectMonitor:
     def read_fields(self, field_list):
         assert 0 != len(field_list)
 
-        expected_response_size = 0
-        command = self.__build_address_read_packet__(expected_response_size, field_list)
-        self.__populate_fields__(field_list, command, expected_response_size)
+        command = self.__build_address_read_packet__(field_list)
+        self.__populate_fields__(field_list, command)
 
