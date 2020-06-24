@@ -23,10 +23,11 @@ class SSMTestResult:
 
 class SelectMonitorV2Tests(simplessm.SelectMonitor):
     test_fields = []
-    coolant_battery_rpm_command = bytes.fromhex("80 10 f0 0e a8 00 00 00 08 00 00 1c 00 00 0e 00 00 0f 77")
-    coolant_battery_rpm_command_nochecksum = bytes.fromhex("80 10 f0 0e a8 00 00 00 08 00 00 1c 00 00 0e 00 00 0f")
+    coolant_battery_rpm_command =  bytes.fromhex("80 10 f0 0e a8 00 00 00 08 00 00 1c 00 00 0e 00 00 0f 77")
+    coolant_battery_rpm_command_nochecksum =   bytes.fromhex("80 10 f0 0e a8 00 00 00 08 00 00 1c 00 00 0e 00 00 0f")
     coolant_battery_rpm_checksum = 0x77
-    coolant_battery_rpm_response = bytes.fromhex("80 10 f0 0e a8 00 00 00 08 00 00 1c 00 00 0e 00 00 0f 77 80 f0 10 05 e8 10 97 01 02 77")
+    # TODO: Get real response with proper checksum and RPM data
+    coolant_battery_rpm_response = bytes.fromhex("80 10 f0 0b a8 00 00 00 08 00 00 1c 00 00 0e 00 00 0f 77 80 f0 10 05 e8 3e 98 a4 a5 e6")
     
 
     def __init__(self):
@@ -50,7 +51,6 @@ class SelectMonitorV2Tests(simplessm.SelectMonitor):
             test_result.passed = False
 
         return test_result
-
 
     def test_read_address_command_creation(self):
         assert 0 != len(self.test_fields)

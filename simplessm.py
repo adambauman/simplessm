@@ -80,12 +80,15 @@ class SelectMonitor:
         address_data.append(SSMPacketComponents.read_address_command)
         address_data.append(SSMPacketComponents.data_padding)
 
+        field_count = 0
         for field in field_list:
             # Add the upper address for fields with 16 bit values
             if None != field.upper_address:
                 address_data.extend(field.upper_address)
+                field_count += 1
 
             address_data.extend(field.lower_address)
+            field_count += 1
 
         # Initialize the new command packet with the proper header
         command.data = bytearray()
@@ -99,7 +102,7 @@ class SelectMonitor:
         command.data.append(self.__calculate_checksum__(command.data))
 
         # Set the expected response size so we know how many bytes to read in
-        command.expected_response_size = self.__calculate_expected_response_size__(len(command.data), len(address_data))
+        command.expected_response_size = self.__calculate_expected_response_size__(len(command.data), field_count)
 
         return command
 
@@ -155,7 +158,7 @@ class SelectMonitor:
         expected_response_size += 3
 
         # Finally add the length of the command data
-        expected_response_size += command_length
+        expected_response_size += data_length
 
         return expected_response_size
 
