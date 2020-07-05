@@ -11,8 +11,14 @@ from .ssm_data import SSMPacketComponents, SSMUnits
 
 class SelectMonitor:
     serial = None
+    is_simulated = False
     
-    def __init__(self, port):
+    def __init__(self, port, simulate_connection=False):
+        if simulate_connection:
+            self.is_simulated = True
+            print("Serial connection set to Simulation Mode")
+            return
+
         print("Starting serial connection...")
         self.serial = serial.Serial(
             port, baudrate = 4800,
@@ -27,6 +33,9 @@ class SelectMonitor:
 
 
     def __del__(self):
+        if self.is_simulated:
+            return
+
         print("Closing serial connection...")
         # if self.serial.is_open:
         #     self.serial.close()
@@ -67,40 +76,49 @@ class SelectMonitor:
     def __build_address_read_packet__(self, field_list):
         assert 0 != len(field_list)
 
+        command = SSMCommand
+
         # Use extend() for adding other byte arrays, append() for single bytes
         # Put together the command data which is a single command byte and the address(es)
-        data = bytearray()
-        data.append(SSMPacketComponents.read_address_command)
-        data.append(SSMPacketComponents.data_padding)
+        address_data = bytearray()
+        address_data.append(SSMPacketComponents.read_address_command)
+        address_data.append(SSMPacketComponents.data_padding)
 
+        field_count = 0
         for field in field_list:
             # Add the upper address for fields with 16 bit values
             if None != field.upper_address:
-                data.extend(field.upper_address)
+                address_data.extend(field.upper_address)
+                field_count += 1
 
-            data.extend(field.lower_address)
+            address_data.extend(field.lower_address)
+            field_count += 1
 
         # Initialize the new command packet with the proper header
-        command_packet = bytearray()
-        command_packet.extend(SSMPacketComponents.ecu_command_header)
+        command.data = bytearray()
+        command.data.extend(SSMPacketComponents.ecu_command_header)
 
         # Add the size byte, this is the number of address bytes + the command byte
-        command_packet.append(len(data))
+        command.data.append(len(address_data))
 
         # Attach the command body, then calculate the checksum and append it
-        command_packet.extend(data)
-        command_packet.append(self.__calculate_checksum__(command_packet))  
+        command.data.extend(address_data)
+        command.data.append(self.__calculate_checksum__(command.data))
 
-        return command_packet
+        # Set the expected response size so we know how many bytes to read in
+        command.expected_response_size = self.__calculate_expected_response_size__(len(command.data), field_count)
+
+        return command
 
 
     def __parse_field_response__(self, response_bytes, field_list, validate_checksum=True):
         assert 0 != len(response_bytes)
         assert 0 != len(field_list)
 
+        print("Response: {}".format(self.__get_hex_string__(response_bytes)))
+
         # Response starts with some echo output, find the location of the respones header
         response_header_index = response_bytes.find(SSMPacketComponents.ecu_response_header)
-        #print("response_header_index: {}".format(response_header_index))
 
         if validate_checksum:
             calculated_checksum = self.__calculate_checksum__(response_bytes[response_header_index:-1])
@@ -133,51 +151,40 @@ class SelectMonitor:
             raise Exception("Data index and response data size mismatch")
 
     
-    def __calculate_expected_respone_size__(self, field_list, command):
-        assert 0 != len(field_list)
-        assert 0 != len(command)
+    def __calculate_expected_response_size__(self, command_length, data_length):
+        assert 0 != command_length
+        assert 0 != data_length
 
-        # Expected response: ECHOED_COMMAND + 3_BYTE_HEADER + 0XE8 + VALUES + CHECKSUM
-        expected_response_size = len(command) + len(SSMPacketComponents.ecu_response_header)
-        
-        # +1 for the 0xE8 nestled between response header and data bytes
-        expected_response_size += 1
-        
-        # +1 for the single value count byte
-        expected_response_size += 1
+        # Response starts with echo of the command packet and a response header
+        expected_response_size = command_length + len(SSMPacketComponents.ecu_response_header)
 
-        for field in field_list:
-            if None != field.upper_value_byte:
-                # Account for MSB coming in for 16-bit values
-                expected_response_size += 1
+        # Add +3 for the data size byte, "0xE8" identifier, and checksum byte
+        expected_response_size += 3
 
-            expected_response_size += 1
+        # Finally add the length of the command data
+        expected_response_size += data_length
 
-        # +1 for checksum byte, then return
-        expected_response_size += 1
         return expected_response_size
 
 
     def __populate_fields__(self, field_list, command, max_read_attempts=200):
         assert 0 != len(field_list)
-        assert 0 != len(command)
+        assert 0 != len(command.data)
+        assert 0 != command.expected_response_size
 
         #start_millis = int(round(time.time() * 1000))
         self.serial.write(command) # 0-1ms, very fast
         #print("Write command: {:4.1f}ms".format((int(round(time.time() * 1000))) - start_millis))
 
-        expected_response_size = self.__calculate_expected_respone_size__(field_list, command)
-        #print("Expected response size: {}".format(expected_response_size))
         read_attempts = 0
         
         #start_millis = int(round(time.time() * 1000))
         while read_attempts < max_read_attempts:
             # TODO: Proper timeout logic or threading of serial reads
-            if expected_response_size > self.serial.in_waiting:
-                #print("in_waiting: {}".format(self.serial.in_waiting))
+            if command.expected_response_size > self.serial.in_waiting:
                 read_attempts += 1
-                # HACK, keeps from hammering too hard, 4800 baud = ~1.5 bytes per second... I think?
-                time.sleep(0.001)
+                # HACK, keeps from hammering too hard, 4800 baud = ~2.08ms per byte
+                time.sleep(0.002)
                 continue
 
             response_bytes = self.serial.read(self.serial.in_waiting)
@@ -189,8 +196,8 @@ class SelectMonitor:
         # 43-46ms, yikes! Lowest expected with 4800baud is ~28ms?
         #print("Read response: {:4.1f}ms".format((int(round(time.time() * 1000))) - start_millis))
 
-        #if expected_response_size != len(response_bytes):
-            #raise Exception("Response size mismatch, expected: {}, got: {}".format(expected_response_size, len(response_bytes)))
+        if command.expected_response_size != len(response_bytes):
+            raise Exception("Response size mismatch, expected: {}, got: {}".format(command.expected_response_size, len(response_bytes)))
 
         #start_millis = int(round(time.time() * 1000))
         # doesn't even register on timer, nice and quick
