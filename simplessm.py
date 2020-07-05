@@ -3,6 +3,8 @@ import serial
 from os import system
 from threading import Lock
 
+import time
+
 from .ssm_data import SSMPacketComponents, SSMUnits
 
 # Invaluable reference for SSM: http://romraider.com/RomRaider/SsmProtocol
@@ -160,11 +162,15 @@ class SelectMonitor:
         assert 0 != len(field_list)
         assert 0 != len(command)
 
-        self.serial.write(command)
+        #start_millis = int(round(time.time() * 1000))
+        self.serial.write(command) # 0-1ms, very fast
+        #print("Write command: {:4.1f}ms".format((int(round(time.time() * 1000))) - start_millis))
 
         expected_response_size = self.__calculate_expected_respone_size__(field_list, command)
         #print("Expected response size: {}".format(expected_response_size))
         read_attempts = 0
+        
+        #start_millis = int(round(time.time() * 1000))
         while read_attempts < max_read_attempts:
             # TODO: Proper timeout logic or threading of serial reads
             if expected_response_size > self.serial.in_waiting:
@@ -179,11 +185,17 @@ class SelectMonitor:
         
         if read_attempts >= max_read_attempts:
             raise Exception("Hit max read attempts")
+        
+        # 43-46ms, yikes! Lowest expected with 4800baud is ~28ms?
+        #print("Read response: {:4.1f}ms".format((int(round(time.time() * 1000))) - start_millis))
 
         #if expected_response_size != len(response_bytes):
             #raise Exception("Response size mismatch, expected: {}, got: {}".format(expected_response_size, len(response_bytes)))
 
+        #start_millis = int(round(time.time() * 1000))
+        # doesn't even register on timer, nice and quick
         self.__parse_field_response__(response_bytes, field_list)
+        #print("Parse field response: {:4.1f}ms".format((int(round(time.time() * 1000))) - start_millis))
 
         
 
@@ -206,4 +218,8 @@ class SelectMonitor:
         assert 0 != len(field_list)
 
         command = self.__build_address_read_packet__(field_list)
+        
+        #start_millis = int(round(time.time() * 1000))
         self.__populate_fields__(field_list, command)
+        #print("Populate fields: {:4.1f}ms".format((int(round(time.time() * 1000))) - start_millis))
+
