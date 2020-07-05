@@ -1,7 +1,9 @@
 import time
 import serial
 from os import system
-from ssm_data import SSMPacketComponents, SSMUnits
+from threading import Lock
+
+from .ssm_data import SSMPacketComponents, SSMUnits
 
 # Invaluable reference for SSM: http://romraider.com/RomRaider/SsmProtocol
 
@@ -185,19 +187,19 @@ class SelectMonitor:
 
         
 
-    def read_fields_continuous(self, field_list):
+    def read_fields_continuous(self, field_list, is_threaded=False):
         assert 0 != len(field_list)
 
+        lock = Lock()
         command = self.__build_address_read_packet__(field_list)
-        output_string = ""
         while True:
-            self.__populate_fields__(field_list, command)
-
-            for field in field_list:
-                output_string += "{}: {}{}\n".format(field.name, field.get_value(), field.unit.symbol)
+            if is_threaded:
+                lock.acquire()
                 
-            print(output_string)               
-            output_string = ""
+            self.__populate_fields__(field_list, command)
+            
+            if is_threaded:
+                lock.release()
     
     
     def read_fields(self, field_list):
@@ -205,4 +207,3 @@ class SelectMonitor:
 
         command = self.__build_address_read_packet__(field_list)
         self.__populate_fields__(field_list, command)
-
