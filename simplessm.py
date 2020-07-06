@@ -1,17 +1,18 @@
 import time
 import serial
 from os import system
-from threading import Lock
-
+from threading import Lock, Event
 import time
 
-from .ssm_data import SSMPacketComponents, SSMUnits
+from .ssm_data import SSMPacketComponents, SSMUnits, SSMCommand
 
 # Invaluable reference for SSM: http://romraider.com/RomRaider/SsmProtocol
 
 class SelectMonitor:
     serial = None
     is_simulated = False
+    __simulated_data_buffer = 0
+    __reverse_simulation = False
     
     def __init__(self, port, simulate_connection=False):
         if simulate_connection:
@@ -230,3 +231,35 @@ class SelectMonitor:
         self.__populate_fields__(field_list, command)
         #print("Populate fields: {:4.1f}ms".format((int(round(time.time() * 1000))) - start_millis))
 
+
+    def simulate_read_fields(self, field_list, simulated_value_bufffer, data_ready_event):
+        # Output a single value incremented by some number with a delay close to what actual SSM comms take
+
+        data_ready_event.clear()
+
+        # Not used, building for authenticity ;)
+        command = self.__build_address_read_packet__(field_list)
+
+        # Current average time for single field update (17 bytes received)
+        # TODO: Find out how much time each field adds and increase simulated delay
+        simulated_delay = 0.050
+        time.sleep(simulated_delay) 
+        
+        # Meh, being lazy for initial testing, properly simulate stuff later
+        increment_value = 5
+
+        if self.__simulated_data_buffer + increment_value >= 100:
+            self.__reverse_simulation = True
+        elif self.__simulated_data_buffer - increment_value <= 0:
+            self.__reverse_simulation = False
+
+        if self.__reverse_simulation:
+            self.__simulated_data_buffer -= increment_value
+        else:
+            self.__simulated_data_buffer += increment_value
+
+        # print("Simulated value: {}".format(self.__simulated_data_buffer))
+        simulated_value_bufffer[0] = self.__simulated_data_buffer
+        data_ready_event.set()
+
+        
