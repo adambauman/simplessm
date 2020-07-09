@@ -242,11 +242,11 @@ class SelectMonitor:
 
         # Current average time for single field update (17 bytes received)
         # TODO: Find out how much time each field adds and increase simulated delay
-        simulated_delay = 0.050
+        simulated_delay = 0.060
         time.sleep(simulated_delay) 
         
         # Meh, being lazy for initial testing, properly simulate stuff later
-        increment_value = 5
+        increment_value = 4.3
 
         if self.__simulated_data_buffer + increment_value >= 100:
             self.__reverse_simulation = True
