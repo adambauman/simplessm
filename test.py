@@ -20,8 +20,6 @@ def main():
     field_list.append(SSMFields.manifold_relative_pressure)
     field_list.append(SSMFields.engine_speed)
     
-    ssm.read_fields_continuous(field_list)
-
     ssm.read_fields(field_list)
     for field in field_list:
         print("{}: {}{}".format(field.name, field.get_value(), field.unit.symbol))

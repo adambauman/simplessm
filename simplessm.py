@@ -4,19 +4,20 @@ from os import system
 from threading import Lock, Event
 import time
 
-from .ssm_data import SSMPacketComponents, SSMUnits, SSMCommand
+from ssm_data import SSMPacketComponents, SSMUnits, SSMCommand
 
 # Invaluable reference for SSM: http://romraider.com/RomRaider/SsmProtocol
 
 class SelectMonitor:
     serial = None
-    is_simulated = False
+    __is_simulated = False
     __simulated_data_buffer = 0
     __reverse_simulation = False
     
     def __init__(self, port, simulate_connection=False):
+        
         if simulate_connection:
-            self.is_simulated = True
+            self.__is_simulated = False
             print("Serial connection set to Simulation Mode")
             return
 
@@ -34,7 +35,7 @@ class SelectMonitor:
 
 
     def __del__(self):
-        if self.is_simulated:
+        if self.__is_simulated:
             return
 
         print("Closing serial connection...")
@@ -173,13 +174,13 @@ class SelectMonitor:
         assert 0 != len(command.data)
         assert 0 != command.expected_response_size
 
-        #start_millis = int(round(time.time() * 1000))
+        start_millis = int(round(time.time() * 1000))
         self.serial.write(command) # 0-1ms, very fast
-        #print("Write command: {:4.1f}ms".format((int(round(time.time() * 1000))) - start_millis))
+        print("Write command: {:4.1f}ms".format((int(round(time.time() * 1000))) - start_millis))
 
         read_attempts = 0
         
-        #start_millis = int(round(time.time() * 1000))
+        start_millis = int(round(time.time() * 1000))
         while read_attempts < max_read_attempts:
             # TODO: Proper timeout logic or threading of serial reads
             if command.expected_response_size > self.serial.in_waiting:
@@ -195,15 +196,15 @@ class SelectMonitor:
             raise Exception("Hit max read attempts")
         
         # 43-46ms, yikes! Lowest expected with 4800baud is ~28ms?
-        #print("Read response: {:4.1f}ms".format((int(round(time.time() * 1000))) - start_millis))
+        print("Read response: {:4.1f}ms".format((int(round(time.time() * 1000))) - start_millis))
 
         if command.expected_response_size != len(response_bytes):
             raise Exception("Response size mismatch, expected: {}, got: {}".format(command.expected_response_size, len(response_bytes)))
 
-        #start_millis = int(round(time.time() * 1000))
+        start_millis = int(round(time.time() * 1000))
         # doesn't even register on timer, nice and quick
         self.__parse_field_response__(response_bytes, field_list)
-        #print("Parse field response: {:4.1f}ms".format((int(round(time.time() * 1000))) - start_millis))
+        print("Parse field response: {:4.1f}ms".format((int(round(time.time() * 1000))) - start_millis))
 
         
 
@@ -222,20 +223,32 @@ class SelectMonitor:
                 lock.release()
     
     
-    def read_fields(self, field_list):
+    def read_fields(self, field_list, data_ready_event=None):
+        
         assert 0 != len(field_list)
 
+        if None != data_ready_event:
+            data_ready_event.clear()
+            
         command = self.__build_address_read_packet__(field_list)
+        assert(None != command.data)
         
         #start_millis = int(round(time.time() * 1000))
         self.__populate_fields__(field_list, command)
         #print("Populate fields: {:4.1f}ms".format((int(round(time.time() * 1000))) - start_millis))
+        
+        if None != data_ready_event:
+            data_ready_event.set()
 
 
-    def simulate_read_fields(self, field_list, simulated_value_bufffer, data_ready_event):
+    def simulate_read_fields(self, field_list, simulated_value_buffer, data_ready_event=None):
         # Output a single value incremented by some number with a delay close to what actual SSM comms take
 
-        data_ready_event.clear()
+        # Prepare values
+        if None != data_ready_event:
+            data_ready_event.clear()
+            
+        simulated_value_buffer.clear()
 
         # Not used, building for authenticity ;)
         command = self.__build_address_read_packet__(field_list)
@@ -259,7 +272,9 @@ class SelectMonitor:
             self.__simulated_data_buffer += increment_value
 
         # print("Simulated value: {}".format(self.__simulated_data_buffer))
-        simulated_value_bufffer[0] = self.__simulated_data_buffer
-        data_ready_event.set()
+        simulated_value_buffer.append(self.__simulated_data_buffer)
+        
+        if None != data_ready_event:
+            data_ready_event.set()
 
         
