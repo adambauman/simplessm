@@ -7,21 +7,20 @@ import time
 from ssm_data import SSMPacketComponents, SSMUnits, SSMCommand
 
 # Invaluable reference for SSM: http://romraider.com/RomRaider/SsmProtocol
+# This code should be compatible with the SSM protocol found in most Subaru models from 2002->2009-ish.
+# The vehicle used for direct testing and development was a 2002 WRX.
+
+class SSMException(Exception):
+    pass
 
 class SelectMonitor:
     serial = None
-    __is_simulated = False
-    __simulated_data_buffer = 0
-    __reverse_simulation = False
     
-    def __init__(self, port, simulate_connection=False):
+    def __init__(self, port):
         
-        if simulate_connection:
-            self.__is_simulated = False
-            print("Serial connection set to Simulation Mode")
-            return
-
-        print("Starting serial connection...")
+        print("Starting serial connection on " + port + "...")
+        # NOTE: (Adam) The parameters for SSM connections are fairly strict, in my testing 4800 baud is the
+        # max speed. 
         self.serial = serial.Serial(
             port, baudrate = 4800,
             bytesize = serial.EIGHTBITS, parity = serial.PARITY_NONE,
@@ -29,20 +28,16 @@ class SelectMonitor:
         )
         if not self.serial.is_open:
             print("Error opening serial port")
-            raise Exception("Open serial connection")
+            raise SSMException("Open serial connection")
 
         print("Succesfully established connection")
 
 
-    def __del__(self):
-        if self.__is_simulated:
-            return
+    # NOTE: (Adam) Serial port closes itself when it falls out of scope, trying to close it again will
+    # throw an error.
+    #def __del__(self):
 
-        print("Closing serial connection...")
-        # if self.serial.is_open:
-        #     self.serial.close()
-
-
+   
     def __get_hex_string__(self, byte_data):
         hex_string = ""
         for single_byte in byte_data:
@@ -81,11 +76,14 @@ class SelectMonitor:
         command = SSMCommand
 
         # Use extend() for adding other byte arrays, append() for single bytes
-        # Put together the command data which is a single command byte and the address(es)
+        # Put together the command data, it is structured like this:
+        # [read_address_command][undefinied_pad_byte][field_address_byte_1][field_address_byte_2][field_address_byte_...]
         address_data = bytearray()
         address_data.append(SSMPacketComponents.read_address_command)
         address_data.append(SSMPacketComponents.data_padding)
 
+        # Keep a rolling count of field addresses we're adding to the command packet, this value will be used to
+        # determine how many field data bytes to expect when parsing the response packet.
         field_count = 0
         for field in field_list:
             # Add the upper address for fields with 16 bit values
@@ -96,7 +94,7 @@ class SelectMonitor:
             address_data.extend(field.lower_address)
             field_count += 1
 
-        # Initialize the new command packet with the proper header
+        # Initialize the new command packet with the proper predefined SSM header
         command.data = bytearray()
         command.data.extend(SSMPacketComponents.ecu_command_header)
 
@@ -113,23 +111,27 @@ class SelectMonitor:
         return command
 
 
-    def __parse_field_response__(self, response_bytes, field_list, validate_checksum=True):
+    def __parse_field_response__(self, response_bytes, field_list, validate_checksum=False):
         assert 0 != len(response_bytes)
         assert 0 != len(field_list)
 
-        print("Response: {}".format(self.__get_hex_string__(response_bytes)))
+        if __debug__:
+            print("Response: {}".format(self.__get_hex_string__(response_bytes)))
 
         # Response starts with some echo output, find the location of the respones header
         response_header_index = response_bytes.find(SSMPacketComponents.ecu_response_header)
 
         if validate_checksum:
             calculated_checksum = self.__calculate_checksum__(response_bytes[response_header_index:-1])
-            #print("calculated_checksum: {:#04x}".format(calculated_checksum))
+            
+            if __debug__:
+                print("calculated_checksum: {:#04x}".format(calculated_checksum))
+            
             if calculated_checksum != response_bytes[-1]:
-                raise Exception("Response checksum mismatch")
+                raise SSMException("Response checksum mismatch")
 
         # Retrieve the number of data bytes to process, this comes right after the response header
-        # Subtract 1 byte because the size also includes the response "command" of 0xE8
+        # Subtract 1 byte because the size also includes the response "command" byte(0xE8).
         response_data_size = response_bytes[response_header_index + 3] - 1
 
         data_index = response_header_index + 5 # skip response header, size byte, and 0xE8 command
@@ -137,10 +139,10 @@ class SelectMonitor:
         # Start working through the data and data fields
         for field in field_list:
             if processed_bytes > response_data_size:
-                raise Exception("Data index out of bounds")
+                raise SSMException("Data index out of bounds")
 
             if None != field.upper_address:
-                # Only set if this is a 16-bit value and we have a MSB to grab
+                # Only set upper_Address if this is a 16-bit value and we have a MSB to grab
                 field.upper_value_byte = response_bytes[data_index]
                 data_index += 1
                 processed_bytes += 1
@@ -150,7 +152,7 @@ class SelectMonitor:
             processed_bytes += 1
 
         if processed_bytes != response_data_size:
-            raise Exception("Data index and response data size mismatch")
+            raise SSMException("Data index and response data size mismatch")
 
     
     def __calculate_expected_response_size__(self, command_length, data_length):
@@ -174,13 +176,17 @@ class SelectMonitor:
         assert 0 != len(command.data)
         assert 0 != command.expected_response_size
 
-        start_millis = int(round(time.time() * 1000))
+        # NOTE: (Adam) Uncomment start_millis and print lines to run response speed tests.
+        #start_millis = int(round(time.time() * 1000))
+
         self.serial.write(command) # 0-1ms, very fast
-        print("Write command: {:4.1f}ms".format((int(round(time.time() * 1000))) - start_millis))
+        
+        #print("Write command: {:4.1f}ms".format((int(round(time.time() * 1000))) - start_millis))
 
         read_attempts = 0
         
-        start_millis = int(round(time.time() * 1000))
+        #start_millis = int(round(time.time() * 1000))
+
         while read_attempts < max_read_attempts:
             # TODO: Proper timeout logic or threading of serial reads
             if command.expected_response_size > self.serial.in_waiting:
@@ -193,20 +199,21 @@ class SelectMonitor:
             break
         
         if read_attempts >= max_read_attempts:
-            raise Exception("Hit max read attempts")
+            raise SSMException("Hit max read attempts")
         
-        # 43-46ms, yikes! Lowest expected with 4800baud is ~28ms?
-        print("Read response: {:4.1f}ms".format((int(round(time.time() * 1000))) - start_millis))
+        # 43-46ms, yikes! Lowest response time possible with 4800baud is ~28ms?
+        #print("Read response: {:4.1f}ms".format((int(round(time.time() * 1000))) - start_millis))
 
         if command.expected_response_size != len(response_bytes):
-            raise Exception("Response size mismatch, expected: {}, got: {}".format(command.expected_response_size, len(response_bytes)))
+            raise SSMException("Response size mismatch, expected: {}, got: {}".format(command.expected_response_size, len(response_bytes)))
 
-        start_millis = int(round(time.time() * 1000))
+        #start_millis = int(round(time.time() * 1000))
+
         # doesn't even register on timer, nice and quick
         self.__parse_field_response__(response_bytes, field_list)
-        print("Parse field response: {:4.1f}ms".format((int(round(time.time() * 1000))) - start_millis))
-
         
+        # print("Parse field response: {:4.1f}ms".format((int(round(time.time() * 1000))) - start_millis))
+
 
     def read_fields_continuous(self, field_list, is_threaded=False):
         assert 0 != len(field_list)
@@ -234,47 +241,10 @@ class SelectMonitor:
         assert(None != command.data)
         
         #start_millis = int(round(time.time() * 1000))
+            
         self.__populate_fields__(field_list, command)
+        
         #print("Populate fields: {:4.1f}ms".format((int(round(time.time() * 1000))) - start_millis))
         
         if None != data_ready_event:
             data_ready_event.set()
-
-
-    def simulate_read_fields(self, field_list, simulated_value_buffer, data_ready_event=None):
-        # Output a single value incremented by some number with a delay close to what actual SSM comms take
-
-        # Prepare values
-        if None != data_ready_event:
-            data_ready_event.clear()
-            
-        simulated_value_buffer.clear()
-
-        # Not used, building for authenticity ;)
-        command = self.__build_address_read_packet__(field_list)
-
-        # Current average time for single field update (17 bytes received)
-        # TODO: Find out how much time each field adds and increase simulated delay
-        simulated_delay = 0.060
-        time.sleep(simulated_delay) 
-        
-        # Meh, being lazy for initial testing, properly simulate stuff later
-        increment_value = 4.3
-
-        if self.__simulated_data_buffer + increment_value >= 100:
-            self.__reverse_simulation = True
-        elif self.__simulated_data_buffer - increment_value <= 0:
-            self.__reverse_simulation = False
-
-        if self.__reverse_simulation:
-            self.__simulated_data_buffer -= increment_value
-        else:
-            self.__simulated_data_buffer += increment_value
-
-        # print("Simulated value: {}".format(self.__simulated_data_buffer))
-        simulated_value_buffer.append(self.__simulated_data_buffer)
-        
-        if None != data_ready_event:
-            data_ready_event.set()
-
-        
