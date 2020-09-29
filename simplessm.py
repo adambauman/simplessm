@@ -8,39 +8,34 @@ from ssm_data import SSMPacketComponents, SSMUnits, SSMCommand
 
 # Invaluable reference for SSM: http://romraider.com/RomRaider/SsmProtocol
 
-class SelectMonitor:
-    serial = None
-    __is_simulated = False
-    __simulated_data_buffer = 0
-    __reverse_simulation = False
+class SimpleSSM:
+    __ssm_connection__ = None
+    __port_name__ = None
     
-    def __init__(self, port, simulate_connection=False):
-        
-        if simulate_connection:
-            self.__is_simulated = False
-            print("Serial connection set to Simulation Mode")
-            return
+    def __init__(self, port_name):
+        assert(0 != len(port_name))
 
+        self.__port_name__ = port_name
+        print ("SimpleSSM waiting to connect on " + port_name + "...")
+        
+    # NOTE: (Adam) Serial closes the connection on destruction, no need to double the work.
+    #def __del__(self):
+        #print("Closing serial connection...")       
+        # if self.__ssm_connection__.is_open:
+        #     self.__ssm_connection__.close()}
+
+    def Connect(self):
         print("Starting serial connection...")
-        self.serial = serial.Serial(
-            port, baudrate = 4800,
+        self.__ssm_connection__ = serial.Serial(
+            self.__port_name__, baudrate = 4800,
             bytesize = serial.EIGHTBITS, parity = serial.PARITY_NONE,
             stopbits = serial.STOPBITS_ONE, timeout = 1.0
         )
-        if not self.serial.is_open:
+        if not self.__ssm_connection__.is_open:
             print("Error opening serial port")
             raise Exception("Open serial connection")
 
         print("Succesfully established connection")
-
-
-    def __del__(self):
-        if self.__is_simulated:
-            return
-
-        print("Closing serial connection...")
-        # if self.serial.is_open:
-        #     self.serial.close()
 
 
     def __get_hex_string__(self, byte_data):
@@ -117,7 +112,7 @@ class SelectMonitor:
         assert 0 != len(response_bytes)
         assert 0 != len(field_list)
 
-        print("Response: {}".format(self.__get_hex_string__(response_bytes)))
+        #print("Response: {}".format(self.__get_hex_string__(response_bytes)))
 
         # Response starts with some echo output, find the location of the respones header
         response_header_index = response_bytes.find(SSMPacketComponents.ecu_response_header)
@@ -174,37 +169,37 @@ class SelectMonitor:
         assert 0 != len(command.data)
         assert 0 != command.expected_response_size
 
-        start_millis = int(round(time.time() * 1000))
-        self.serial.write(command) # 0-1ms, very fast
-        print("Write command: {:4.1f}ms".format((int(round(time.time() * 1000))) - start_millis))
+        #start_millis = int(round(time.time() * 1000))
+        self.__ssm_connection__.write(command) # 0-1ms, very fast
+        #print("Write command: {:4.1f}ms".format((int(round(time.time() * 1000))) - start_millis))
 
         read_attempts = 0
         
-        start_millis = int(round(time.time() * 1000))
+        #start_millis = int(round(time.time() * 1000))
         while read_attempts < max_read_attempts:
             # TODO: Proper timeout logic or threading of serial reads
-            if command.expected_response_size > self.serial.in_waiting:
+            if command.expected_response_size > self.__ssm_connection__.in_waiting:
                 read_attempts += 1
                 # HACK, keeps from hammering too hard, 4800 baud = ~2.08ms per byte
                 time.sleep(0.002)
                 continue
 
-            response_bytes = self.serial.read(self.serial.in_waiting)
+            response_bytes = self.__ssm_connection__.read(self.__ssm_connection__.in_waiting)
             break
         
         if read_attempts >= max_read_attempts:
             raise Exception("Hit max read attempts")
         
         # 43-46ms, yikes! Lowest expected with 4800baud is ~28ms?
-        print("Read response: {:4.1f}ms".format((int(round(time.time() * 1000))) - start_millis))
+        #print("Read response: {:4.1f}ms".format((int(round(time.time() * 1000))) - start_millis))
 
         if command.expected_response_size != len(response_bytes):
             raise Exception("Response size mismatch, expected: {}, got: {}".format(command.expected_response_size, len(response_bytes)))
 
-        start_millis = int(round(time.time() * 1000))
+        #start_millis = int(round(time.time() * 1000))
         # doesn't even register on timer, nice and quick
         self.__parse_field_response__(response_bytes, field_list)
-        print("Parse field response: {:4.1f}ms".format((int(round(time.time() * 1000))) - start_millis))
+        #print("Parse field response: {:4.1f}ms".format((int(round(time.time() * 1000))) - start_millis))
 
         
 
@@ -233,48 +228,10 @@ class SelectMonitor:
         command = self.__build_address_read_packet__(field_list)
         assert(None != command.data)
         
+        # Uncomment start_millis and print statement to tes populate_fields() performance.
         #start_millis = int(round(time.time() * 1000))
         self.__populate_fields__(field_list, command)
         #print("Populate fields: {:4.1f}ms".format((int(round(time.time() * 1000))) - start_millis))
         
         if None != data_ready_event:
             data_ready_event.set()
-
-
-    def simulate_read_fields(self, field_list, simulated_value_buffer, data_ready_event=None):
-        # Output a single value incremented by some number with a delay close to what actual SSM comms take
-
-        # Prepare values
-        if None != data_ready_event:
-            data_ready_event.clear()
-            
-        simulated_value_buffer.clear()
-
-        # Not used, building for authenticity ;)
-        command = self.__build_address_read_packet__(field_list)
-
-        # Current average time for single field update (17 bytes received)
-        # TODO: Find out how much time each field adds and increase simulated delay
-        simulated_delay = 0.060
-        time.sleep(simulated_delay) 
-        
-        # Meh, being lazy for initial testing, properly simulate stuff later
-        increment_value = 4.3
-
-        if self.__simulated_data_buffer + increment_value >= 100:
-            self.__reverse_simulation = True
-        elif self.__simulated_data_buffer - increment_value <= 0:
-            self.__reverse_simulation = False
-
-        if self.__reverse_simulation:
-            self.__simulated_data_buffer -= increment_value
-        else:
-            self.__simulated_data_buffer += increment_value
-
-        # print("Simulated value: {}".format(self.__simulated_data_buffer))
-        simulated_value_buffer.append(self.__simulated_data_buffer)
-        
-        if None != data_ready_event:
-            data_ready_event.set()
-
-        
