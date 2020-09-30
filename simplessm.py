@@ -108,46 +108,55 @@ class SimpleSSM:
         return command
 
 
-    def __parse_field_response__(self, response_bytes, field_list, validate_checksum=True):
+    def __parse_field_response__(self, command, response_bytes, field_list, validate_checksum=True):
         assert 0 != len(response_bytes)
         assert 0 != len(field_list)
+        assert 0 != len(command.data), 0 != command.expected_response_size
+
+        # Example response:
+        # bytes.fromhex("80 10 f0 0b a8 00 00 00 08 00 00 1c 00 00 0e 00 00 0f 77 80 f0 10 05 e8 3e 98 a4 a5 e6")
 
         #print("Response: {}".format(self.__get_hex_string__(response_bytes)))
 
-        # Response starts with some echo output, find the location of the respones header
-        response_header_index = response_bytes.find(SSMPacketComponents.ecu_response_header)
+        # Response starts by echoing the command, extract the response itself
+        trimmed_response_bytes = response_bytes[len(command.data) : len(response_bytes)]
+        #print("Trimmed Response: {}".format(self.__get_hex_string__(trimmed_response_bytes)))
 
-        if validate_checksum:
-            calculated_checksum = self.__calculate_checksum__(response_bytes[response_header_index:-1])
+        # TODO: (Adam) 2020-09-30 Fix response checksum validation. Using the command checksum method doesn't
+        #       seem to work.
+        #if validate_checksum:
+            # Calculate response checksum, do not send in the response's checksum byte at the end
+            #calculated_checksum = self.__calculate_checksum__(response_bytes[0 : -1])
+            #calculated_checksum = self.__calculate_checksum__(trimmed_response_bytes[0 : -1])
             #print("calculated_checksum: {:#04x}".format(calculated_checksum))
-            if calculated_checksum != response_bytes[-1]:
-                raise Exception("Response checksum mismatch")
+            #if calculated_checksum != response_bytes[-1]:
+                #raise Exception("Response checksum mismatch")
+           
+        # Grab the data, it's nestled between the header|size byte|response identifer and the checksum
+        response_identifier_size = 1
+        response_datasize_size = 1
+        data = trimmed_response_bytes[(len(SSMPacketComponents.ecu_response_header) + response_identifier_size + response_datasize_size) : -1]
+        #print("Data: {}".format(self.__get_hex_string__(data)))
 
-        # Retrieve the number of data bytes to process, this comes right after the response header
-        # Subtract 1 byte because the size also includes the response "command" of 0xE8
-        response_data_size = response_bytes[response_header_index + 3] - 1
+        # Grab the data size byte, this also includes the identifier which we need to  discard
+        data_size = trimmed_response_bytes[len(SSMPacketComponents.ecu_response_header)] - response_identifier_size
 
-        data_index = response_header_index + 5 # skip response header, size byte, and 0xE8 command
-        processed_bytes = 0
-        # Start working through the data and data fields
+        # Response data is received in the same order as requested via the field_list. 
+        data_index = 0
         for field in field_list:
-            if processed_bytes > response_data_size:
-                raise Exception("Data index out of bounds")
+            assert(data_index <= data_size)
 
             if None != field.upper_address:
-                # Only set if this is a 16-bit value and we have a MSB to grab
-                field.upper_value_byte = response_bytes[data_index]
+                # This is a 16-bit response, the byte we're grabbing is the MSB
+                field.upper_value_byte = data[data_index]
                 data_index += 1
-                processed_bytes += 1
 
-            field.lower_value_byte = response_bytes[data_index]
+            field.lower_value_byte = data[data_index]
             data_index += 1
-            processed_bytes += 1
 
-        if processed_bytes != response_data_size:
-            raise Exception("Data index and response data size mismatch")
+        assert(data_index == data_size)
 
-    
+
     def __calculate_expected_response_size__(self, command_length, data_length):
         assert 0 != command_length
         assert 0 != data_length
@@ -198,7 +207,7 @@ class SimpleSSM:
 
         #start_millis = int(round(time.time() * 1000))
         # doesn't even register on timer, nice and quick
-        self.__parse_field_response__(response_bytes, field_list)
+        self.__parse_field_response__(command, response_bytes, field_list)
         #print("Parse field response: {:4.1f}ms".format((int(round(time.time() * 1000))) - start_millis))
 
         
