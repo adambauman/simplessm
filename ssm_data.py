@@ -57,7 +57,7 @@ class SSMCommand:
     data = None
     expected_response_size = 0
     
-# Unit versions sourced from here: http://romraider.com/RomRaider/SsmProtocol
+# Unit conversions sourced from here: http://romraider.com/RomRaider/SsmProtocol
 class SSMFields:
     engine_load = SSMField(
         lower_address=bytearray([0x00,0x00,0x07]), name="Engine Load", 

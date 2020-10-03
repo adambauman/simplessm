@@ -14,11 +14,16 @@ class TestData:
         coolant_battery_rpm_response = bytes.fromhex("80 10 f0 0e a8 00 00 00 08 00 00 1c 00 00 0e 00 00 0f 77 80 f0 10 05 e8 3e 98 a4 a5 e6")
         #coolant_battery_rpm_response = bytes.fromhex("80 10 f0 0b a8 00 00 00 08 00 00 1c 00 00 0e 00 00 0f 77 80 f0 10 05 e8 3e 98 a4 a5 e6")
 
-        class Values:
+        class Data:
             coolant_temp = 0x3E
             battery_voltage = 0x98
             rpm_msb = 0xA4
-            rpm_lsb = 0xA5
+            rpm_lsb = 0xA5            
+
+        class Values:
+            coolant_temp = 0
+            battery_voltage = 0
+            rpm = 0
             
 
 class SimpleSSMTests(unittest.TestCase):
@@ -65,12 +70,10 @@ class SimpleSSMTests(unittest.TestCase):
 
         # Coolant Temp, Battery Voltage, RPM MSB, RPM LSB
         # 3e 98 a4 a5
-        self.assertEqual(TestData.Response.Values.coolant_temp, command_fields[0].lower_value_byte)
-        self.assertEqual(TestData.Response.Values.battery_voltage, command_fields[1].lower_value_byte)
-        self.assertEqual(TestData.Response.Values.rpm_msb, command_fields[2].upper_value_byte)
-        self.assertEqual(TestData.Response.Values.rpm_lsb, command_fields[2].lower_value_byte)
-
-
+        self.assertEqual(TestData.Response.Data.coolant_temp, command_fields[0].lower_value_byte)
+        self.assertEqual(TestData.Response.Data.battery_voltage, command_fields[1].lower_value_byte)
+        self.assertEqual(TestData.Response.Data.rpm_msb, command_fields[2].upper_value_byte)
+        self.assertEqual(TestData.Response.Data.rpm_lsb, command_fields[2].lower_value_byte)
 
 
 if __name__ == '__main__':

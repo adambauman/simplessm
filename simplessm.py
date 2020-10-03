@@ -73,6 +73,13 @@ class SimpleSSM:
     def __build_address_read_packet__(self, field_list):
         assert 0 != len(field_list)
 
+        # TODO: (Adam) 2020-10-03 Try the "respond until interrupted" method, it might result in
+        #           lower data response times.
+        #A0 Block Read Request
+        #A0 PP AA AA AA CC
+        #PP == 0×00 (single response), 0×01 (respond until interrupted)
+        #AA AA AA = address
+
         command = SSMCommand
 
         # Use extend() for adding other byte arrays, append() for single bytes
@@ -123,7 +130,7 @@ class SimpleSSM:
         #print("Trimmed Response: {}".format(self.__get_hex_string__(trimmed_response_bytes)))
 
         # TODO: (Adam) 2020-09-30 Fix response checksum validation. Using the command checksum method doesn't
-        #       seem to work.
+        #       seem to match up with response data. Gather more command & response packets for inspection.
         #if validate_checksum:
             # Calculate response checksum, do not send in the response's checksum byte at the end
             #calculated_checksum = self.__calculate_checksum__(response_bytes[0 : -1])
@@ -190,7 +197,7 @@ class SimpleSSM:
             if command.expected_response_size > self.__ssm_connection__.in_waiting:
                 read_attempts += 1
                 # HACK, keeps from hammering too hard, 4800 baud = ~2.08ms per byte
-                time.sleep(0.002)
+                time.sleep(0.001)
                 continue
 
             response_bytes = self.__ssm_connection__.read(self.__ssm_connection__.in_waiting)
@@ -210,7 +217,6 @@ class SimpleSSM:
         self.__parse_field_response__(command, response_bytes, field_list)
         #print("Parse field response: {:4.1f}ms".format((int(round(time.time() * 1000))) - start_millis))
 
-        
 
     def read_fields_continuous(self, field_list, is_threaded=False):
         assert 0 != len(field_list)

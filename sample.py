@@ -1,6 +1,3 @@
-import time
-import struct
-
 from simplessm import SelectMonitor
 from ssm_data import SSMFields
 
