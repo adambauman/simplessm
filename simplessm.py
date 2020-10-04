@@ -2,7 +2,6 @@ import time
 import serial
 from os import system
 from threading import Lock, Event
-import time
 
 from ssm_data import SSMPacketComponents, SSMUnits, SSMCommand
 
